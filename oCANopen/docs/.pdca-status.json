@@ -1,0 +1,26 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2026-04-02T12:00:00.000Z",
+  "activeFeatures": ["canopen-stack-refactoring"],
+  "primaryFeature": "canopen-stack-refactoring",
+  "features": {
+    "canopen-stack-refactoring": {
+      "phase": "plan",
+      "matchRate": null,
+      "iterationCount": 0,
+      "startedAt": "2026-04-02T12:00:00.000Z",
+      "tasks": ["[Plan] canopen-stack-refactoring"]
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-04-02T00:04:12.838Z",
+    "onboardingCompleted": true,
+    "lastActivity": "2026-04-02T12:00:00.000Z"
+  },
+  "history": []
+}
