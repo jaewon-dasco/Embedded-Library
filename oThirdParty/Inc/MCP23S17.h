@@ -14,6 +14,8 @@
 #ifndef INC_MCP23S17_H_
 #define INC_MCP23S17_H_
 
+#define MCP23S17_VERSION           0.2
+
 #include "ONE_Common.h"
 #include "ONE_Signal.h"
 
@@ -23,60 +25,60 @@ extern "C"
 #endif
 
 /* ─── Register Addresses (IOCON.BANK=0, Sequential) ─── */
-#define MCP23S17_REG_IODIRA		0x00
-#define MCP23S17_REG_IODIRB		0x01
-#define MCP23S17_REG_IPOLA		0x02
-#define MCP23S17_REG_IPOLB		0x03
-#define MCP23S17_REG_GPINTENA	0x04
-#define MCP23S17_REG_GPINTENB	0x05
-#define MCP23S17_REG_DEFVALA	0x06
-#define MCP23S17_REG_DEFVALB	0x07
-#define MCP23S17_REG_INTCONA	0x08
-#define MCP23S17_REG_INTCONB	0x09
-#define MCP23S17_REG_IOCON		0x0A
-#define MCP23S17_REG_GPPUA		0x0C
-#define MCP23S17_REG_GPPUB		0x0D
-#define MCP23S17_REG_INTFA		0x0E
-#define MCP23S17_REG_INTFB		0x0F
-#define MCP23S17_REG_INTCAPA	0x10
-#define MCP23S17_REG_INTCAPB	0x11
-#define MCP23S17_REG_GPIOA		0x12
-#define MCP23S17_REG_GPIOB		0x13
-#define MCP23S17_REG_OLATA		0x14
-#define MCP23S17_REG_OLATB		0x15
+#define MCP23S17_REG_IODIRA        0x00
+#define MCP23S17_REG_IODIRB        0x01
+#define MCP23S17_REG_IPOLA         0x02
+#define MCP23S17_REG_IPOLB         0x03
+#define MCP23S17_REG_GPINTENA      0x04
+#define MCP23S17_REG_GPINTENB      0x05
+#define MCP23S17_REG_DEFVALA       0x06
+#define MCP23S17_REG_DEFVALB       0x07
+#define MCP23S17_REG_INTCONA       0x08
+#define MCP23S17_REG_INTCONB       0x09
+#define MCP23S17_REG_IOCON         0x0A
+#define MCP23S17_REG_GPPUA         0x0C
+#define MCP23S17_REG_GPPUB         0x0D
+#define MCP23S17_REG_INTFA         0x0E
+#define MCP23S17_REG_INTFB         0x0F
+#define MCP23S17_REG_INTCAPA       0x10
+#define MCP23S17_REG_INTCAPB       0x11
+#define MCP23S17_REG_GPIOA         0x12
+#define MCP23S17_REG_GPIOB         0x13
+#define MCP23S17_REG_OLATA         0x14
+#define MCP23S17_REG_OLATB         0x15
 
 /* ─── IOCON Bits ─── */
-#define MCP23S17_IOCON_BANK		((uint8_t)0x80)
-#define MCP23S17_IOCON_MIRROR	((uint8_t)0x40)
-#define MCP23S17_IOCON_SEQOP	((uint8_t)0x20)
-#define MCP23S17_IOCON_DISSLW	((uint8_t)0x10)
-#define MCP23S17_IOCON_HAEN		((uint8_t)0x08)
-#define MCP23S17_IOCON_ODR		((uint8_t)0x04)
-#define MCP23S17_IOCON_INTPOL	((uint8_t)0x02)
+#define MCP23S17_IOCON_BANK        ((uint8_t)0x80)
+#define MCP23S17_IOCON_MIRROR      ((uint8_t)0x40)
+#define MCP23S17_IOCON_SEQOP       ((uint8_t)0x20)
+#define MCP23S17_IOCON_DISSLW      ((uint8_t)0x10)
+#define MCP23S17_IOCON_HAEN        ((uint8_t)0x08)
+#define MCP23S17_IOCON_ODR         ((uint8_t)0x04)
+#define MCP23S17_IOCON_INTPOL      ((uint8_t)0x02)
 
 /* ─── SPI Control Byte ─── */
-#define MCP23S17_CTRL_WRITE(addr)	(0x40 | (((addr) & 0x07) << 1))
-#define MCP23S17_CTRL_READ(addr)	(0x41 | (((addr) & 0x07) << 1))
+#define MCP23S17_CTRL_WRITE(addr)  (0x40 | (((addr) & 0x07) << 1))
+#define MCP23S17_CTRL_READ(addr)   (0x41 | (((addr) & 0x07) << 1))
 
 /* ─── Timeout ─── */
-#define MCP23S17_SPI_TIMEOUT	100U
+#define MCP23S17_SPI_TIMEOUT       100U
 
 /* ─── Port Enum ─── */
 typedef enum {
-	MCP23S17_PORTA = 0,
-	MCP23S17_PORTB = 1,
+	MCP23S17_PORTA  = 0,
+	MCP23S17_PORTB  = 1,
 } MCP23S17_Port_t;
 
 /* ─── Pin Direction ─── */
 typedef enum {
-	MCP23S17_DIR_OUTPUT = 0,
-	MCP23S17_DIR_INPUT  = 1,
+	MCP23S17_DIR_OUTPUT  = 0,
+	MCP23S17_DIR_INPUT   = 1,
 } MCP23S17_Dir_t;
 
 /* ─── Pin Pull-Up ─── */
 typedef enum {
-	MCP23S17_PULLUP_DISABLE = 0,
-	MCP23S17_PULLUP_ENABLE  = 1,
+	MCP23S17_PULLUP_DISABLE  = 0,
+	MCP23S17_PULLUP_ENABLE   = 1,
 } MCP23S17_PullUp_t;
 
 /* ─── Parameter Structure (Per-Pin) ─── */
@@ -121,11 +123,13 @@ typedef struct {
 /* ─── Device Structure ─── */
 typedef struct {
 	SPI_HandleTypeDef *pSPI;
-	oIO_t *pCS;				// CS pin pointer
-	oIO_t *pRST;			// Reset pin pointer
-	uint8_t HWAddress;		// 0~7 (A2,A1,A0)
+	oIO_t CS;            // CS pin (Port == NULL: no CS)
+	oIO_t *pRST;         // Reset pin pointer
+	uint8_t HWAddress;   // 0~7 (A2,A1,A0)
 	uint8_t IsOpen;
 	uint8_t IsFault;
+	uint8_t FaultCode;   // 1=SPI_Init 2=IOCON_Write 3=IOCON_Read 4=HAEN_NotSet 5=SetParam
+	uint8_t FaultValue;  // IOCON read-back value when FaultCode=4
 
 	/* Cached register values (for delta write) */
 	uint8_t CacheDirA;
@@ -137,9 +141,12 @@ typedef struct {
 } MCP23S17_t;
 
 /* ─── Init / DeInit ─── */
-extern oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t *pCS, oIO_t *pRST, uint8_t HWAddr, MCP23S17_Param_t *pParam);
+extern oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t CS, oIO_t *pRST, uint8_t HWAddr, MCP23S17_Param_t *pParam);
 extern oResult_t MCP23S17_DeInit(MCP23S17_t *pDev);
 extern oResult_t MCP23S17_Reset(MCP23S17_t *pDev);
+
+/* ─── SPI Recovery (ATCommend oAT_UartRecovery 패턴) ─── */
+extern oResult_t MCP23S17_SpiRecovery(MCP23S17_t *pDev);
 
 /* ─── Register Access ─── */
 extern oResult_t MCP23S17_WriteRegister(MCP23S17_t *pDev, uint8_t Reg, uint8_t Data);
@@ -165,3 +172,12 @@ extern oResult_t MCP23S17_GetInterruptCapture(MCP23S17_t *pDev, MCP23S17_Port_t 
 #endif
 
 #endif /* INC_MCP23S17_H_ */
+
+/* History
+
+2026-06-26 | v0.1
+	- baseline (MCP23S17.h)
+
+2026-10-20 | v0.2
+	- CS 인자 값 전달 통일 - CS.Port == NULL 이면 CS 없음으로 보고 Open 에서 거부하지 않으며, CS 토글 지점은 Port NULL 이면 건너뜀
+*/

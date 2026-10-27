@@ -1,8 +1,7 @@
 /*
- * ONE_Timer.c
+ * ONE_Common.c
  *
- * Created: 2024-08-27 오전 11:55:38
- *  Author: JONE
+ *  Version: 0.2 (2026-07-29)
  */
 #include "ONE_Time.h"
 #include "ONE_Common.h"
@@ -146,6 +145,70 @@ oResult_t oJSON_GetValue(const char *JsonStr, const char *Keyword, char *pData, 
     pData[len] = '\0';
 
     return RESULT_OK;
+}
+
+/* JSON 배열(Keyword 뒤 '['~']')의 Index번째 객체를 NUL 종료 독립 문자열로 추출.
+ *   반환 RESULT_OK    : 추출 성공 (pElement에 "{...}" 형태, NUL 종료)
+ *        RESULT_NULL  : Keyword 없음 또는 Index가 배열 끝을 넘음 (호출자 루프 종료 조건)
+ *        RESULT_ERROR : 인자 오류 / '[' 없음 / 짝 '}' 없음 / pElement 크기 부족(잘림)
+ *
+ * 원본 내부 포인터가 아닌 복사본을 주는 이유: 호출자가 이어서 oJSON_GetValue(pElement, ...)를
+ * 호출할 때 원본 포인터면 strstr이 해당 객체의 '}'를 넘어 다음 원소의 키까지 읽어, 키가 빠진
+ * 원소에 옆 원소 값이 조용히 들어온다.
+ * 잘림을 자르지 않고 RESULT_ERROR로 올리는 이유: 잘린 원소는 뒤쪽 키가 사라진 상태로 파싱되어
+ * 호출자가 결함을 감지할 수 없다.
+ * 전제: 1단 배열 — 원소 객체 안에 중첩 '{}'가 없다 (중첩 객체는 지원하지 않음). */
+oResult_t oJSON_GetArray(const char *JsonStr, const char *Keyword, uint32_t Index, char *pElement, uint32_t SizeOfElement)
+{
+	const char *pKey;
+	const char *pScan;
+	const char *pStart;
+	const char *pEnd;
+	uint32_t Length;
+	uint32_t i;
+
+	if (!JsonStr || !Keyword || !pElement || SizeOfElement == 0) {
+		return RESULT_ERROR;
+	}
+
+	pKey = strstr(JsonStr, Keyword);
+	if (!pKey) {
+		return RESULT_NULL;
+	}
+
+	pScan = strchr(pKey + strlen(Keyword), '[');
+	if (!pScan) {
+		return RESULT_ERROR;
+	}
+	pScan++;	/* '[' 다음으로 이동 */
+
+	memset(pElement, 0, SizeOfElement);
+
+	for (i = 0; ; i++) {
+		/* 원소 시작 '{' 탐색 — ']' 또는 문자열 끝을 먼저 만나면 배열 종료 */
+		while (*pScan && *pScan != '{' && *pScan != ']') pScan++;
+		if (*pScan != '{') {
+			return RESULT_NULL;
+		}
+
+		pStart = pScan;
+		pEnd = strchr(pStart, '}');
+		if (!pEnd) {
+			return RESULT_ERROR;
+		}
+
+		if (i == Index) {
+			Length = (uint32_t)(pEnd - pStart + 1);
+			if (Length >= SizeOfElement) {
+				return RESULT_ERROR;
+			}
+			memcpy(pElement, pStart, Length);
+			pElement[Length] = '\0';
+			return RESULT_OK;
+		}
+
+		pScan = pEnd + 1;
+	}
 }
 
 uint8_t oHexCharToByte(char c) {

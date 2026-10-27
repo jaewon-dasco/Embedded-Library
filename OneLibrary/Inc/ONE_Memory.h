@@ -1,6 +1,8 @@
 #ifndef ONE_MEMORY_H
 #define ONE_MEMORY_H
 
+#define ONE_MEMORY_VERSION           0.1
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -8,8 +10,8 @@ extern "C" {
 /*Includes ------------------------------------------------------------------*/
 #include "ONE_Common.h"
 
-#define oMEM_GetBit(pntr,index)		((*((uint8_t *)(pntr)+(index/8)) >> (index%8)) & 0x01)
-#define oMEM_SetBit(pntr,index,bit)	(bit ? (*((uint8_t *)(pntr)+(index/8)) |= ((uint8_t)1 << (index%8))) : (*((uint8_t *)(pntr)+(index/8)) &= ~((uint8_t)1 << (index%8))))
+#define oMEM_GetBit(pntr,index)      ((*((uint8_t *)(pntr)+(index/8)) >> (index%8)) & 0x01)
+#define oMEM_SetBit(pntr,index,bit)  (bit ? (*((uint8_t *)(pntr)+(index/8)) |= ((uint8_t)1 << (index%8))) : (*((uint8_t *)(pntr)+(index/8)) &= ~((uint8_t)1 << (index%8))))
 
 /* CRC-8/WCDMA */
 static const unsigned char CRC8_TABLE[256] = {
@@ -121,3 +123,9 @@ extern uint32_t oMEM_CRC32(uint8_t *block, uint32_t blockLength, uint32_t crc);
 
 extern void oMEM_ChangeByteOrder(uint8_t* pData, uint32_t Size);
 #endif
+
+/* History
+
+2026-06-26 | v0.1
+	- baseline (ONE_Memory.h)
+*/

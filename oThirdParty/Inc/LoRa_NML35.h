@@ -1,6 +1,8 @@
 #ifndef INC_LORA_NML35_H_
 #define INC_LORA_NML35_H_
 
+#define LORA_NML35_VERSION                               0.1
+
 #include "ONE_Common.h"
 #include "ONE_Memory.h"
 #include "ONE_Time.h"
@@ -8,61 +10,61 @@
 /*************************************************************************************/
 /*Data packet define ****************************************************************/
 /*************************************************************************************/
-#define LORA_PARAMTER_INITIALIZER(Network,Address,Mode)	{Network,Address,LORA_DEFAULT_SERVER_ADDRESS,Mode}
+#define LORA_PARAMTER_INITIALIZER(Network,Address,Mode)  {Network,Address,LORA_DEFAULT_SERVER_ADDRESS,Mode}
 
-#define LORA_MODE_STANBY()					LoRaDevice.Parameter.OperatingMode |= LoRaOperMode_Stanby
-#define LORA_MODE_OPERATING()				LoRaDevice.Parameter.OperatingMode &= ((uint8_t)~LoRaOperMode_Stanby)
+#define LORA_MODE_STANBY()                               LoRaDevice.Parameter.OperatingMode |= LoRaOperMode_Stanby
+#define LORA_MODE_OPERATING()                            LoRaDevice.Parameter.OperatingMode &= ((uint8_t)~LoRaOperMode_Stanby)
 
-#define LORA_RADIO_BROADCAST_MAXSIZE		10
-#define LORA_ADDRESS_MAX					0xFFFFFEFE
-#define LORA_DEFAULT_SERVER_ADDRESS			(LORA_BROADCAST_ADDRESS-1)
-#define LORA_BROADCAST_ADDRESS				LORA_ADDRESS_MAX
+#define LORA_RADIO_BROADCAST_MAXSIZE                     10
+#define LORA_ADDRESS_MAX                                 0xFFFFFEFE
+#define LORA_DEFAULT_SERVER_ADDRESS                      (LORA_BROADCAST_ADDRESS-1)
+#define LORA_BROADCAST_ADDRESS                           LORA_ADDRESS_MAX
 
-#define LORA_RADIO_TRANSFER_MAX_SIZE		2048
-#define LORA_UART_DATA_MAX_SIZE				(LORA_RADIO_TRANSFER_MAX_SIZE+20)
-#define LORA_UART_TX_BUFF_MAXSIZE			(200)
-#define LORA_UART_RX_BUFF_MAXSIZE			(200)
+#define LORA_RADIO_TRANSFER_MAX_SIZE                     2048
+#define LORA_UART_DATA_MAX_SIZE                          (LORA_RADIO_TRANSFER_MAX_SIZE+20)
+#define LORA_UART_TX_BUFF_MAXSIZE                        (200)
+#define LORA_UART_RX_BUFF_MAXSIZE                        (200)
 
 // PACKET_FLAG
-#define LORA_PACKET_STARTBIT				0x3C
-#define LORA_PACKET_ENDBIT					0x3E
+#define LORA_PACKET_STARTBIT                             0x3C
+#define LORA_PACKET_ENDBIT                               0x3E
 
 // PACKET_PECKET_PID
-#define	PID_MASK							0x80
-#define	PID_WAKEUP							(PID_MASK|0x01)
-#define	PID_HARTBEAT						(PID_MASK|0x02)
-#define	PID_RESPONSE						(PID_MASK|0x03)
-#define	PID_RECEIVED_RADIO_DATA				(PID_MASK|0x04)
-#define	PID_TRANSMIT_RADIO_DATA				(PID_MASK|0x05)
-#define	PID_PARAMETER_READ					(PID_MASK|0x06)
-#define	PID_PARAMETER_WRITE					(PID_MASK|0x07)
-#define	PID_PARAMETER_DATA					(PID_MASK|0x08)
-#define PID_NOTSUPPORT						(PID_MASK|0x0F)
-#define PID_MAX								PID_NOTSUPPORT
+#define PID_MASK                                         0x80
+#define PID_WAKEUP                                       (PID_MASK|0x01)
+#define PID_HARTBEAT                                     (PID_MASK|0x02)
+#define PID_RESPONSE                                     (PID_MASK|0x03)
+#define PID_RECEIVED_RADIO_DATA                          (PID_MASK|0x04)
+#define PID_TRANSMIT_RADIO_DATA                          (PID_MASK|0x05)
+#define PID_PARAMETER_READ                               (PID_MASK|0x06)
+#define PID_PARAMETER_WRITE                              (PID_MASK|0x07)
+#define PID_PARAMETER_DATA                               (PID_MASK|0x08)
+#define PID_NOTSUPPORT                                   (PID_MASK|0x0F)
+#define PID_MAX                                          PID_NOTSUPPORT
 
-#define PARAMETER_DEVINFO					0x01
-#define PARAMETER_NETWORK					0x02
-#define PARAMETER_ADDRESS					0x03
-#define PARAMETER_SERVERADDRESS				0x04
-#define PARAMETER_CHANNEL					0x05
-#define PARAMETER_OPERATING_MODE			0x06
-#define PARAMETER_SAVE						0xFE
+#define PARAMETER_DEVINFO                                0x01
+#define PARAMETER_NETWORK                                0x02
+#define PARAMETER_ADDRESS                                0x03
+#define PARAMETER_SERVERADDRESS                          0x04
+#define PARAMETER_CHANNEL                                0x05
+#define PARAMETER_OPERATING_MODE                         0x06
+#define PARAMETER_SAVE                                   0xFE
 
-#define RESPONSE_OK							64
-#define RESPONSE_ERROR						128
-#define RESPONSE_NOTSUPPORT					255
+#define RESPONSE_OK                                      64
+#define RESPONSE_ERROR                                   128
+#define RESPONSE_NOTSUPPORT                              255
 
 // TypeDef
 typedef enum{
-	LoRaOperMode_Null = 0x00,
-	LoRaOperMode_Stanby = 0x01,
-	LoRaOperMode_Node = 0x02,
-	LoRaOperMode_Server = 0x04,
-	LoRaOperMode_Repeater = 0x08
+	LoRaOperMode_Null      = 0x00,
+	LoRaOperMode_Stanby    = 0x01,
+	LoRaOperMode_Node      = 0x02,
+	LoRaOperMode_Server    = 0x04,
+	LoRaOperMode_Repeater  = 0x08
 }LoRaOperatingMode_t;
 
 typedef enum{
-	LORA_RESULT_NULL = 0,
+	LORA_RESULT_NULL            = 0,
 	LORA_RESULT_INIT,
 	LORA_RESULT_BUSY,
 	LORA_RESULT_RUN,
@@ -87,13 +89,13 @@ typedef void (*RadioReceiveHandler_t)(uint32_t, uint16_t, uint8_t*); //(SrcAddre
 typedef struct LoRaStatusDef{
 	union{
 		struct{
-			uint8_t		RadioHeavyTraffic			: 1; //IntterupCount > 20 in 3sec
+			uint8_t		RadioHeavyTraffic			: 1;   //IntterupCount > 20 in 3sec
 			uint8_t		ServerExists				: 1;
 			uint8_t		FrozenReceive				: 1;
-			uint8_t		ReceptionSensitivityHigh	: 1; //listen before talk sensitivity to high.
-			uint8_t		DetectedRadioNoise			: 1; //DecodeFailCount > 5 in 3sec
-			uint8_t		DetectedOtherNetwork		: 1; //OtherNetworkDetectCount > 1 in 3sec
-			uint8_t		NetworkOnline				: 1; //Beacon active state
+			uint8_t		ReceptionSensitivityHigh	: 1;    //listen before talk sensitivity to high.
+			uint8_t		DetectedRadioNoise			: 1;  //DecodeFailCount > 5 in 3sec
+			uint8_t		DetectedOtherNetwork		: 1;    //OtherNetworkDetectCount > 1 in 3sec
+			uint8_t		NetworkOnline				: 1;   //Beacon active state
 			uint8_t		MailboxBusy					: 1;
 		};
 
@@ -196,3 +198,8 @@ extern LoRaResult_t LoRa_Close();
 extern void LoRaRun();
 #endif
 
+/* History
+
+2026-06-26 | v0.1
+	- baseline (LoRa_NML35.h)
+*/

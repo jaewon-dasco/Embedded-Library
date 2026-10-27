@@ -1,3 +1,8 @@
+/*
+ * ONE_ATCommend.c
+ *
+ *  Version: 0.6 (2026-10-13)
+ */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,35 +18,43 @@
 #if defined(__HAL_UART_ENABLE)
 #define AT_UART_TRANSMIT_TIMEOUT_TIME	10000
 
+/* 정적 라인 버퍼 크기 — calloc/free 대체 목적. single-context 폴링 전제로 함수 내부 static 사용.
+ * RX 링버퍼 최대(RAK3172 800)와 동일하게 잡아 표현 가능한 어떤 단일 라인도 수용
+ * (LoRa 다운링크 +EVT:RX 페이로드 hex는 DR3+에서 484자 — 320이면 드롭됐음). */
+#define AT_LINE_BUFFER_SIZE				800
+
 oATResult_t oAT_UartRecovery(oATCommend_t *pAT)
 {
-	static uint32_t DMAResetTimer;
-
 	/* DMA RX 핸들 검증 - DMA 미설정 시 ERROR 리턴 */
 	if(pAT->pUART->hdmarx == NULL){
 		return AT_RESULT_ERROR;
 	}
 
 	/* DMA Circular 모드 확인 - 링버퍼 미설정 시 Circular로 재설정 */
-	if(pAT->pUART->hdmarx->Init.Mode != DMA_CIRCULAR){
-		pAT->pUART->hdmarx->Init.Mode = DMA_CIRCULAR;
+	if(!ONE_DMA_IS_CIRCULAR(pAT->pUART->hdmarx)){
+		ONE_DMA_SET_CIRCULAR(pAT->pUART->hdmarx);
 		if(HAL_DMA_Init(pAT->pUART->hdmarx) != HAL_OK){
 			return AT_RESULT_ERROR;
 		}
 	}
 
+	/* HAL_UART_AbortReceive는 ICR 에러 플래그만 지우고 huart->ErrorCode 필드는 남긴다.
+	 * 아래를 else로 묶으면 Abort가 만든 READY를 같은 호출에서 받지 못해 재시작 분기에
+	 * 영영 도달하지 못하고, ErrorCode를 소거하는 UART_Start_Receive_DMA에 닿지 못해
+	 * RX가 영구 사망한다. 독립 if로 분리 — ONE_Serial.c의 DMA 경로와 동일 형태 */
 	if (pAT->pUART->ErrorCode & (HAL_UART_ERROR_ORE|HAL_UART_ERROR_FE|HAL_UART_ERROR_NE|HAL_UART_ERROR_PE|HAL_UART_ERROR_DMA)){
 		HAL_UART_AbortReceive(pAT->pUART);
 	}
-	else if(pAT->pUART->RxState == HAL_UART_STATE_READY && pAT->State.IsOpen){
-		if(oTMR_Trigger(&DMAResetTimer, 500, 1, TICKBASE_SYSTICK)){
+
+	if(pAT->pUART->RxState == HAL_UART_STATE_READY && pAT->State.IsOpen){
+		if(oTMR_Trigger(&pAT->DMAResetTimer, 500, 1, TICKBASE_SYSTICK)){
 			if(HAL_UART_Receive_DMA(pAT->pUART, (uint8_t *)pAT->pBufferRx, pAT->LengthOfBufferRx) == HAL_OK){
 				pAT->IndexOfRxFirst = 0;
 			}
 		}
 	}
 	else{
-		DMAResetTimer = oTMR_GetTick(TICKBASE_SYSTICK);
+		pAT->DMAResetTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 	}
 
 	return AT_RESULT_OK;
@@ -114,67 +127,106 @@ uint8_t oAT_ReceiveResponse(oATCommend_t *pAT, char *Response)
 
 uint8_t oAT_ReadLine(oATCommend_t *pAT)
 {
-	uint8_t result = 0;
-	uint32_t length = 0;
-	char *pBuffer = NULL;
-	char *pStr;
+	static char AT_LineBuffer[AT_LINE_BUFFER_SIZE];
+	static uint8_t DropToDelimiter = 0;	/* 직전 오버플로 라인의 잔여 조각 폐기 중 — 가짜 라인 오인 방지 */
+	uint32_t bufCount;
+	uint32_t leadingLen = 0;
+	uint32_t lineLen = 0;
+	uint32_t trailingLen = 0;
+	uint8_t hasTerminator = 0;
 
-	if(pAT == NULL){
+	if(pAT == NULL || pAT->State.IsRxBusy){
 		return 0;
 	}
 
-	length = AT_RECEIVE_BUFFER_COUNT(pAT);
-
-	if(length <= 0){
+	bufCount = AT_RECEIVE_BUFFER_COUNT(pAT);
+	if(bufCount == 0){
 		return 0;
 	}
 
-	pBuffer = calloc(length+1, sizeof(char));
-
-	if(pBuffer == NULL){
-		return 0;
-	}
-
-	if(oAT_ReceiveCopyTo(pAT, (uint8_t *)pBuffer, length) == 0){
-		goto EXIT;
-	}
-
-	//Invalid
-	pStr = strtok(pBuffer, "\r\n");
-
-	if(pStr != NULL && AT_RECEIVE_BUFFER_COUNT(pAT) > 0){
-		uint32_t leadingLen = (uint32_t)(pStr - pBuffer);
-		uint32_t tokenLen = strlen(pStr);
-		uint32_t removeLen = leadingLen + tokenLen;
-
-		// Count trailing \r \n delimiters from ring buffer
-		while(removeLen < AT_RECEIVE_BUFFER_COUNT(pAT)){
-			char c = *AT_RECEIVE_BUFFER_ITEM(pAT, removeLen);
-			if(c == '\r' || c == '\n') removeLen++;
-			else break;
+	/* 0) 오버플로 잔여 폐기 모드 — 라인 끝(delimiter)까지 버리고 나서야 정상 파싱 재개 */
+	if(DropToDelimiter){
+		uint32_t n = 0;
+		while(n < bufCount){
+			char c = *AT_RECEIVE_BUFFER_ITEM(pAT, n);
+			if(c == '\r' || c == '\n'){
+				DropToDelimiter = 0;
+				break;
+			}
+			n++;
 		}
-
-		oAT_ReceiveResponse(pAT, pStr);
-
-		if(pAT->ReceiveCallback){
-			(*pAT->ReceiveCallback)(pStr, strlen(pStr));
+		if(n > 0){
+			AT_RECEIVE_BUFFER_REMOVE(pAT, n);
 		}
-
-		AT_RECEIVE_BUFFER_REMOVE(pAT, removeLen);
-		result = 1;
+		if(DropToDelimiter){
+			return 0;	/* 아직 라인 끝 못 봄 — 다음 호출에서 계속 폐기 */
+		}
+		bufCount = AT_RECEIVE_BUFFER_COUNT(pAT);
+		if(bufCount == 0){
+			return 0;
+		}
 	}
 
-EXIT:
-	free(pBuffer);
+	/* 1) 링 버퍼 선두의 \r\n 스킵 */
+	while(leadingLen < bufCount){
+		char c = *AT_RECEIVE_BUFFER_ITEM(pAT, leadingLen);
+		if(c == '\r' || c == '\n') leadingLen++;
+		else break;
+	}
 
-	return result;
+	if(leadingLen >= bufCount){
+		/* 전부 delimiter → 소비만 */
+		AT_RECEIVE_BUFFER_REMOVE(pAT, leadingLen);
+		return 0;
+	}
+
+	/* 2) 다음 \r 또는 \n 까지 한 줄만 스캔·복사 */
+	while((leadingLen + lineLen) < bufCount && lineLen < AT_LINE_BUFFER_SIZE - 1){
+		char c = *AT_RECEIVE_BUFFER_ITEM(pAT, leadingLen + lineLen);
+		if(c == '\r' || c == '\n'){
+			hasTerminator = 1;
+			break;
+		}
+		AT_LineBuffer[lineLen++] = c;
+	}
+	AT_LineBuffer[lineLen] = '\0';
+
+	if(!hasTerminator){
+		/* 라인 미완성 */
+		if(lineLen >= AT_LINE_BUFFER_SIZE - 1){
+			/* 버퍼 초과 — 폐기 후 라인 끝까지 잔여 조각도 폐기 모드로 전환 (조각이 가짜 라인으로 소비되는 것 방지) */
+			oSerial_Log("oAT", "Line overflow: %luB dropped (buf=%d)", (unsigned long)lineLen, AT_LINE_BUFFER_SIZE);
+			AT_RECEIVE_BUFFER_REMOVE(pAT, leadingLen + lineLen);
+			DropToDelimiter = 1;
+		}
+		return 0;
+	}
+
+	/* 3) 후행 \r\n 카운트 */
+	while((leadingLen + lineLen + trailingLen) < bufCount){
+		char c = *AT_RECEIVE_BUFFER_ITEM(pAT, leadingLen + lineLen + trailingLen);
+		if(c == '\r' || c == '\n') trailingLen++;
+		else break;
+	}
+
+	/* 4) 응답 처리 + 콜백 */
+	oAT_ReceiveResponse(pAT, AT_LineBuffer);
+
+	if(pAT->ReceiveCallback){
+		(*pAT->ReceiveCallback)(AT_LineBuffer, lineLen);
+	}
+
+	/* 5) 링 버퍼에서 라인 + 주변 delimiter 제거 */
+	AT_RECEIVE_BUFFER_REMOVE(pAT, leadingLen + lineLen + trailingLen);
+
+	return 1;
 }
 
 uint8_t oAT_Read(oATCommend_t *pAT)
 {
 	uint8_t result = 0;
 	uint32_t length;
-	char *pBuffer;
+	char *pBuffer = NULL;
 	char *pStr;
 
 	if(pAT == NULL){
@@ -286,7 +338,7 @@ oATResult_t oAT_TransmitBuffer(oATCommend_t *pAT)
 			if(AT_TRANSMIT_BUFFER_COUNT(pAT) <= 0){
 				return AT_RESULT_NULL;
 			}
-			else if(pAT->pUART->gState != HAL_UART_STATE_READY || (pAT->pUART->hdmatx != NULL && pAT->pUART->hdmatx->Instance->CNDTR != 0)){
+			else if(pAT->pUART->gState != HAL_UART_STATE_READY || (pAT->pUART->hdmatx != NULL && ONE_DMA_GET_COUNTER(pAT->pUART->hdmatx) != 0)){
 				return AT_RESULT_BUSY;
 			}
 			ATTransmitBufferStep++;
@@ -579,6 +631,14 @@ oATResult_t oAT_Close(oATCommend_t *pAT)
 
 	memset(&pAT->State, 0, sizeof(pAT->State));
 
+	/* Close 시 RX 상태도 초기화 — 안 하면 stale DMA 버퍼가 재처리·재-echo 되어 폭주한다 (oAT_Open 과 대칭) */
+	pAT->IndexOfRxFirst = 0;
+	pAT->IndexOfRxLast  = 0;
+	pAT->RxTimestamp    = 0;
+	if(pAT->pBufferRx && pAT->LengthOfBufferRx){
+		memset(pAT->pBufferRx, 0, pAT->LengthOfBufferRx);
+	}
+
 	return AT_RESULT_OK;
 }
 
@@ -606,8 +666,8 @@ oATResult_t oAT_Open(oATCommend_t *pAT)
 	}
 
 	/* DMA Circular 모드 확인 - 링버퍼 미설정 시 Circular로 설정 */
-	if(pAT->pUART->hdmarx->Init.Mode != DMA_CIRCULAR){
-		pAT->pUART->hdmarx->Init.Mode = DMA_CIRCULAR;
+	if(!ONE_DMA_IS_CIRCULAR(pAT->pUART->hdmarx)){
+		ONE_DMA_SET_CIRCULAR(pAT->pUART->hdmarx);
 		if(HAL_DMA_Init(pAT->pUART->hdmarx) != HAL_OK){
 			return AT_RESULT_ERROR;
 		}

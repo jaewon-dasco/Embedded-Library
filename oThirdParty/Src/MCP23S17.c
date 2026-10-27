@@ -1,10 +1,7 @@
 /*
  * MCP23S17.c
  *
- *  Created on: Mar 12, 2026
- *      Author: JONE
- *
- *  MCP23S17TE 16-bit SPI I/O Expander Driver
+ *  Version: 0.2 (2026-10-20)
  */
 
 #include "MCP23S17.h"
@@ -17,12 +14,16 @@
 
 static void MCP23S17_CS_Low(MCP23S17_t *pDev)
 {
-	HAL_GPIO_WritePin(pDev->pCS->Port, pDev->pCS->Pin, pDev->pCS->ActiveLevel);
+	if(pDev->CS.Port != NULL){
+		HAL_GPIO_WritePin(pDev->CS.Port, pDev->CS.Pin, pDev->CS.ActiveLevel);
+	}
 }
 
 static void MCP23S17_CS_High(MCP23S17_t *pDev)
 {
-	HAL_GPIO_WritePin(pDev->pCS->Port, pDev->pCS->Pin, !pDev->pCS->ActiveLevel);
+	if(pDev->CS.Port != NULL){
+		HAL_GPIO_WritePin(pDev->CS.Port, pDev->CS.Pin, !pDev->CS.ActiveLevel);
+	}
 }
 
 /* ──────────────────────────────────────────────
@@ -69,6 +70,69 @@ static void MCP23S17_PackParam(MCP23S17_Param_t *pParam, uint8_t *pDirA, uint8_t
 }
 
 /* ──────────────────────────────────────────────
+ *  Internal: SPI Health Check
+ * ────────────────────────────────────────────── */
+
+/* SPI HAL State 확인.
+ * - State == HAL_SPI_STATE_READY (RESET/BUSY/ERROR 아님)
+ * - ErrorCode == NONE (MODF/OVR/FRE/CRC 아님)
+ * SPE 비트는 HAL_SPI_Transmit/Receive 진입 시 자동 세팅되므로 여기서 검사하지 않음. */
+static uint8_t MCP23S17_IsSpiReady(SPI_HandleTypeDef *pSPI)
+{
+	if(pSPI == NULL || pSPI->Instance == NULL){
+		return 0;
+	}
+	if(pSPI->State != HAL_SPI_STATE_READY){
+		return 0;
+	}
+	if(pSPI->ErrorCode != HAL_SPI_ERROR_NONE){
+		return 0;
+	}
+	return 1;
+}
+
+/* ──────────────────────────────────────────────
+ *  SPI Recovery (ATCommend oAT_UartRecovery 패턴)
+ * ────────────────────────────────────────────── */
+
+oResult_t MCP23S17_SpiRecovery(MCP23S17_t *pDev)
+{
+	static uint32_t RecoveryTimer;
+
+	if(pDev == NULL || pDev->pSPI == NULL){
+		return RESULT_NULL;
+	}
+
+	/* 정상 동작 중이면 통과 */
+	if(MCP23S17_IsSpiReady(pDev->pSPI)){
+		return RESULT_OK;
+	}
+
+	/* 비정상: 500ms throttle 후 재초기화 시도 */
+	if(!oTMR_Trigger(&RecoveryTimer, 500, 1, TICKBASE_SYSTICK)){
+		return RESULT_RUN;
+	}
+
+	/* 진행 중 전송 강제 종료 + 에러 플래그 클리어 */
+	HAL_SPI_Abort(pDev->pSPI);
+
+	if(HAL_SPI_DeInit(pDev->pSPI) != HAL_OK){
+		oSerial_Log("MCP23S17", "SPI Recovery DeInit FAIL");
+		return RESULT_FAULT;
+	}
+	if(HAL_SPI_Init(pDev->pSPI) != HAL_OK){
+		oSerial_Log("MCP23S17", "SPI Recovery Init FAIL");
+		return RESULT_FAULT;
+	}
+
+	/* CS 안전 상태로 복원 */
+	MCP23S17_CS_High(pDev);
+
+	oSerial_Log("MCP23S17", "SPI Recovery OK");
+	return RESULT_RUN;
+}
+
+/* ──────────────────────────────────────────────
  *  Register Access
  * ────────────────────────────────────────────── */
 
@@ -76,8 +140,14 @@ oResult_t MCP23S17_WriteRegister(MCP23S17_t *pDev, uint8_t Reg, uint8_t Data)
 {
 	uint8_t txBuf[3];
 
-	if(pDev == NULL || pDev->pSPI == NULL || pDev->pCS == NULL){
+	if(pDev == NULL || pDev->pSPI == NULL){
 		return RESULT_NULL;
+	}
+
+	/* SPI 비정상 시 자동 복구 시도 후 차단 */
+	if(!MCP23S17_IsSpiReady(pDev->pSPI)){
+		MCP23S17_SpiRecovery(pDev);
+		return RESULT_ERROR;
 	}
 
 	txBuf[0] = MCP23S17_CTRL_WRITE(pDev->HWAddress);
@@ -100,8 +170,14 @@ oResult_t MCP23S17_ReadRegister(MCP23S17_t *pDev, uint8_t Reg, uint8_t *pData)
 	uint8_t txBuf[3];
 	uint8_t rxBuf[3];
 
-	if(pDev == NULL || pDev->pSPI == NULL || pDev->pCS == NULL || pData == NULL){
+	if(pDev == NULL || pDev->pSPI == NULL || pData == NULL){
 		return RESULT_NULL;
+	}
+
+	/* SPI 비정상 시 자동 복구 시도 후 차단 */
+	if(!MCP23S17_IsSpiReady(pDev->pSPI)){
+		MCP23S17_SpiRecovery(pDev);
+		return RESULT_ERROR;
 	}
 
 	txBuf[0] = MCP23S17_CTRL_READ(pDev->HWAddress);
@@ -176,7 +252,7 @@ oResult_t MCP23S17_Reset(MCP23S17_t *pDev)
  * @brief  MCP23S17 초기화 (HW Reset → IOCON → Param 적용)
  * @param  pDev    : 디바이스 구조체 포인터
  * @param  pSPI    : HAL SPI 핸들 포인터
- * @param  pCS     : CS 핀 (oIO_t*), ActiveLevel = 핀 활성 레벨
+ * @param  CS      : CS 핀 (oIO_t 값), Port == NULL 이면 CS 없음, ActiveLevel = 핀 활성 레벨
  * @param  pRST    : Reset 핀 (oIO_t*), NULL이면 HW Reset 생략
  * @param  HWAddr  : 하드웨어 주소 0~7 (A2,A1,A0)
  * @param  pParam  : 초기 설정 (MCP23S17_Param_t*)
@@ -184,13 +260,13 @@ oResult_t MCP23S17_Reset(MCP23S17_t *pDev)
  *                   - PullUp_GPAx/PullUp_GPBx : 핀별 풀업 (1=Enable, 0=Disable)
  * @retval RESULT_RUN(진행중), RESULT_OK(완료), RESULT_FAULT(실패)
  */
-oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t *pCS, oIO_t *pRST, uint8_t HWAddr, MCP23S17_Param_t *pParam)
+oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t CS, oIO_t *pRST, uint8_t HWAddr, MCP23S17_Param_t *pParam)
 {
 	static uint8_t InitStep = 0;
 	static uint32_t InitTimer = 0;
 	static MCP23S17_Param_t *pInitParam;
 
-	if(pDev == NULL || pSPI == NULL || pCS == NULL || pParam == NULL){
+	if(pDev == NULL || pSPI == NULL || pParam == NULL){
 		InitStep = 0;
 		return RESULT_ERROR;
 	}
@@ -202,7 +278,7 @@ oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t *pCS, o
 		case 0:
 			// Fault 상태면 DeInit 후 재초기화
 			if(pDev->IsFault){
-				oSerial_Log("MCP23S17", "Fault detected, DeInit first");
+				oSerial_Log("MCP23S17", "Fault detected (code=%d val=0x%02X), DeInit first", pDev->FaultCode, pDev->FaultValue);
 				return RESULT_FAULT;
 			}
 
@@ -215,7 +291,7 @@ oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t *pCS, o
 
 			// Store handles
 			pDev->pSPI = pSPI;
-			pDev->pCS = pCS;
+			pDev->CS = CS;
 			pDev->pRST = pRST;
 			pDev->HWAddress = HWAddr & 0x07;
 			pDev->IsOpen = 0;
@@ -236,6 +312,7 @@ oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t *pCS, o
 			if(HAL_SPI_Init(pSPI) != HAL_OK){
 				oSerial_Log("MCP23S17", "SPI Init FAIL");
 				pDev->IsFault = 1;
+				pDev->FaultCode = 1;
 				result = RESULT_FAULT;
 				break;
 			}
@@ -280,15 +357,44 @@ oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t *pCS, o
 			break;
 
 		case 3:
+		{
 			// IOCON: HAEN=1 (hardware address enable), SEQOP=0 (sequential), MIRROR=0
-			if(MCP23S17_WriteRegister(pDev, MCP23S17_REG_IOCON, MCP23S17_IOCON_HAEN) != RESULT_OK){
-				oSerial_Log("MCP23S17", "Init IOCON FAIL");
+			// SPI ready 확인 후 직접 HAL 호출로 실패 원인 분리
+			uint8_t spiReady = MCP23S17_IsSpiReady(pSPI);
+			uint32_t cr1 = pSPI->Instance ? pSPI->Instance->CR1 : 0;
+			uint32_t state = pSPI->State;
+			uint32_t errcode = pSPI->ErrorCode;
+
+			if(!spiReady){
+				oSerial_Log("MCP23S17", "Init IOCON FAIL: SPI not ready CR1=0x%04lX St=%lu Err=0x%lX",
+					cr1, state, errcode);
 				pDev->IsFault = 1;
+				pDev->FaultCode = 2;
+				pDev->FaultValue = 0xA0;  // SPI not ready
+				result = RESULT_FAULT;
+				break;
+			}
+
+			uint8_t txBuf[3] = {
+				MCP23S17_CTRL_WRITE(pDev->HWAddress),
+				MCP23S17_REG_IOCON,
+				MCP23S17_IOCON_HAEN
+			};
+			MCP23S17_CS_Low(pDev);
+			HAL_StatusTypeDef hal = HAL_SPI_Transmit(pSPI, txBuf, 3, MCP23S17_SPI_TIMEOUT);
+			MCP23S17_CS_High(pDev);
+
+			if(hal != HAL_OK){
+				oSerial_Log("MCP23S17", "Init IOCON FAIL: HAL=%d Err=0x%lX", hal, pSPI->ErrorCode);
+				pDev->IsFault = 1;
+				pDev->FaultCode = 2;
+				pDev->FaultValue = (uint8_t)(0xB0 | (hal & 0x0F));  // HAL error
 				result = RESULT_FAULT;
 				break;
 			}
 			InitStep++;
 			break;
+		}
 
 		case 4:
 		{
@@ -297,6 +403,7 @@ oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t *pCS, o
 			if(MCP23S17_ReadRegister(pDev, MCP23S17_REG_IOCON, &iocon) != RESULT_OK){
 				oSerial_Log("MCP23S17", "Init Verify FAIL");
 				pDev->IsFault = 1;
+				pDev->FaultCode = 3;
 				result = RESULT_FAULT;
 				break;
 			}
@@ -304,6 +411,8 @@ oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t *pCS, o
 			if((iocon & MCP23S17_IOCON_HAEN) == 0){
 				oSerial_Log("MCP23S17", "Init HAEN not set (0x%02X)", iocon);
 				pDev->IsFault = 1;
+				pDev->FaultCode = 4;
+				pDev->FaultValue = iocon;
 				result = RESULT_FAULT;
 				break;
 			}
@@ -315,6 +424,7 @@ oResult_t MCP23S17_Init(MCP23S17_t *pDev, SPI_HandleTypeDef *pSPI, oIO_t *pCS, o
 				oSerial_Log("MCP23S17", "Init SetParameter FAIL");
 				pDev->IsOpen = 0;
 				pDev->IsFault = 1;
+				pDev->FaultCode = 5;
 				result = RESULT_FAULT;
 				break;
 			}

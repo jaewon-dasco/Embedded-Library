@@ -1,4 +1,9 @@
-#include "ONE_Time.h"
+/*
+ * ONE_SerialTransceiver.c
+ *
+ *  Version: 0.1 (2026-06-29)
+ */
+﻿#include "ONE_Time.h"
 #include "ONE_Common.h"
 #include "ONE_Memory.h"
 #include "ONE_Serial.h"

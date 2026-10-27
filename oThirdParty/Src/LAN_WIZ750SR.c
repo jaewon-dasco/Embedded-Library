@@ -1,4 +1,9 @@
-#include <math.h>
+/*
+ * LAN_WIZ750SR.c
+ *
+ *  Version: 0.1 (2026-06-29)
+ */
+﻿#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,11 +19,11 @@
 #define LAN_ATCMD_AT_MODE				"+++"
 #define LAN_ATCMD_GW_MODE				"EX\r\n"
 #define LAN_ATCMD_REBOOT				"RT\r\n"		//"REBOOT"
-#define LAN_ATCMD_STATUS				"ST\r\n"		//제품의 동작 상태(Status) 확인
+#define LAN_ATCMD_STATUS				"ST\r\n"		//?쒗뭹???숈옉 ?곹깭(Status) ?뺤씤
 #define LAN_ATCMD_OP_PORT_1883			"LP1883\r\n"
-#define LAN_ATCMD_DATAPACK_TIME			"PT500\r\n"		//0: 사용하지 않음 / 1 ~ 65535: 데이터 패킹 시간 (Unit: millisecond)
-#define LAN_ATCMD_TCP_INACTIVITY_TIME	"IT0\r\n"		//0: 사용하지 않음 / 1 ~ 65535: 비활성 타이머 값 (Unit: second)
-#define LAN_ATCMD_TCP_KEEPALIVE_ACTIVE	"KI7000\r\n"	//0: 사용하지 않음 / 1 ~ 65535: 초기 Keep-alive 패킷 전송 간격 (Unit: millisecond)
+#define LAN_ATCMD_DATAPACK_TIME			"PT500\r\n"		//0: ?ъ슜?섏? ?딆쓬 / 1 ~ 65535: ?곗씠???⑦궧 ?쒓컙 (Unit: millisecond)
+#define LAN_ATCMD_TCP_INACTIVITY_TIME	"IT0\r\n"		//0: ?ъ슜?섏? ?딆쓬 / 1 ~ 65535: 鍮꾪솢????대㉧ 媛?(Unit: second)
+#define LAN_ATCMD_TCP_KEEPALIVE_ACTIVE	"KI7000\r\n"	//0: ?ъ슜?섏? ?딆쓬 / 1 ~ 65535: 珥덇린 Keep-alive ?⑦궥 ?꾩넚 媛꾧꺽 (Unit: millisecond)
 
 uint8_t LAN_IsInitialized;
 uint8_t LAN_IsAllocatedAddress;
@@ -427,7 +432,7 @@ uint8_t LAN_SetTCPConfig (uint16_t KeepAliveTime)
 				break;
 			} // @suppress("No break at end of case")
 		case 1:
-			sprintf(Bff, "RI%d", 1000); //TCP 클라이언트 재연결 간격
+			sprintf(Bff, "RI%d", 1000); //TCP ?대씪?댁뼵???ъ뿰寃?媛꾧꺽
 
 			if(AT_TransmitCommend(pLanAT, Bff, NULL, 100, 0, true) == AT_RESULT_OK){
 				LAN_TCPConfig_Step++;
@@ -435,7 +440,7 @@ uint8_t LAN_SetTCPConfig (uint16_t KeepAliveTime)
 			break;
 		case 2:
 			if(KeepAliveTime > 0){
-				sprintf(Bff, "KA%d", KeepAliveTime); //TCP Keep-alive 허용 설정
+				sprintf(Bff, "KA%d", KeepAliveTime); //TCP Keep-alive ?덉슜 ?ㅼ젙
 
 				if(AT_TransmitCommend(pLanAT, Bff, NULL, 100, 0, true) == AT_RESULT_OK){
 					LAN_TCPConfig_Step++;
@@ -446,14 +451,14 @@ uint8_t LAN_SetTCPConfig (uint16_t KeepAliveTime)
 			}
 			break;
 		case 3:
-			sprintf(Bff, "KI%d", KeepAliveTime/2); //TCP Keep-alive 초기 간격
+			sprintf(Bff, "KI%d", KeepAliveTime/2); //TCP Keep-alive 珥덇린 媛꾧꺽
 
 			if(AT_TransmitCommend(pLanAT, Bff, NULL, 100, 0, true) == AT_RESULT_OK){
 				LAN_TCPConfig_Step++;
 			}
 			break;
 		case 4:
-			sprintf(Bff, "KE%d", KeepAliveTime); //TCP Keep-alive 재시도 간격
+			sprintf(Bff, "KE%d", KeepAliveTime); //TCP Keep-alive ?ъ떆??媛꾧꺽
 
 			if(AT_TransmitCommend(pLanAT, Bff, NULL, 100, 0, true) == AT_RESULT_OK){
 				LAN_TCPConfig_Step++;

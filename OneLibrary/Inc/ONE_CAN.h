@@ -8,11 +8,13 @@
 #ifndef INC_ONE_CAN_H_
 #define INC_ONE_CAN_H_
 
+#define ONE_CAN_VERSION                       0.1
+
 #include "ONE_Common.h"
 #include "main.h"
 
-#define CAN_MESSAGE_INITIALIZER(Id,Dlc,Extd)		{Id,Dlc,{0,0,0,0,0,0,0,0},0,Extd,0}
-#define CAN_CALLBACK_MAXCOUNT						5
+#define CAN_MESSAGE_INITIALIZER(Id,Dlc,Extd)  {Id,Dlc,{0,0,0,0,0,0,0,0},0,Extd,0}
+#define CAN_CALLBACK_MAXCOUNT                 5
 
 typedef struct CANMessageTypeDef{
 	uint32_t ID;
@@ -62,3 +64,9 @@ extern oResult_t oCAN_IsError(oCANVxD_t *pVxD);
 extern oResult_t oCAN_Open(oCANVxD_t **ppVxD, CAN_TypeDef *pCAN, uint16_t Bitrate);
 
 #endif /* INC_ONE_CAN_H_ */
+
+/* History
+
+2026-06-26 | v0.1
+	- baseline (ONE_CAN.h)
+*/

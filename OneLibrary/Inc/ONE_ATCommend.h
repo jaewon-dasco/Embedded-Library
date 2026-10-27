@@ -1,36 +1,39 @@
 #ifndef INC_ONE_ATCOMMEND_H_
 #define INC_ONE_ATCOMMEND_H_
 
+#define ONE_ATCOMMEND_VERSION               0.6
+
 #include "main.h"
+#include "ONE_Common.h"
 #include "ONE_Time.h"
 
 #if defined(__HAL_UART_ENABLE)
 /*************************************************************************************
  Define
  *************************************************************************************/
-#define AT_STRING_CRLF						"\r\n"
-#define AT_STRING_CR						"\r"
-#define AT_STRING_LF						"\n"
+#define AT_STRING_CRLF                      "\r\n"
+#define AT_STRING_CR                        "\r"
+#define AT_STRING_LF                        "\n"
 
-#define AT_DMA_INDEX(pUART)					(((uint32_t)((pUART)->RxXferSize) - (pUART)->hdmarx->Instance->CNDTR))
-#define AT_TRANSMIT_BUFFER_COUNT(pAT)		((pAT)->IndexOfTxLast<(pAT)->IndexOfTxFirst ? ((pAT)->LengthOfBufferTx-(pAT)->IndexOfTxFirst+(pAT)->IndexOfTxLast) : ((pAT)->IndexOfTxLast-(pAT)->IndexOfTxFirst))
-#define AT_RECEIVE_BUFFER_COUNT(pAT)		((pAT)->IndexOfRxLast<(pAT)->IndexOfRxFirst ? ((pAT)->LengthOfBufferRx-(pAT)->IndexOfRxFirst+(pAT)->IndexOfRxLast) : ((pAT)->IndexOfRxLast-(pAT)->IndexOfRxFirst))
-#define AT_RECEIVE_BUFFER_ITEM(pAT, Index)	(char *)((pAT)->pBufferRx + (((pAT)->IndexOfRxFirst + (uint32_t)Index) % (pAT)->LengthOfBufferRx))
-#define AT_RECEIVE_BUFFER_REMOVE(pAT,Cnt)	((pAT)->IndexOfRxFirst = ((pAT)->IndexOfRxFirst+Cnt)%(pAT)->LengthOfBufferRx)
+#define AT_DMA_INDEX(pUART)                 ((uint32_t)((pUART)->RxXferSize) - ONE_DMA_GET_COUNTER((pUART)->hdmarx))
+#define AT_TRANSMIT_BUFFER_COUNT(pAT)       ((pAT)->IndexOfTxLast<(pAT)->IndexOfTxFirst ? ((pAT)->LengthOfBufferTx-(pAT)->IndexOfTxFirst+(pAT)->IndexOfTxLast) : ((pAT)->IndexOfTxLast-(pAT)->IndexOfTxFirst))
+#define AT_RECEIVE_BUFFER_COUNT(pAT)        ((pAT)->IndexOfRxLast<(pAT)->IndexOfRxFirst ? ((pAT)->LengthOfBufferRx-(pAT)->IndexOfRxFirst+(pAT)->IndexOfRxLast) : ((pAT)->IndexOfRxLast-(pAT)->IndexOfRxFirst))
+#define AT_RECEIVE_BUFFER_ITEM(pAT, Index)  (char *)((pAT)->pBufferRx + (((pAT)->IndexOfRxFirst + (uint32_t)Index) % (pAT)->LengthOfBufferRx))
+#define AT_RECEIVE_BUFFER_REMOVE(pAT,Cnt)   ((pAT)->IndexOfRxFirst = ((pAT)->IndexOfRxFirst+Cnt)%(pAT)->LengthOfBufferRx)
 
 /*************************************************************************************
  Typedef
  *************************************************************************************/
 typedef enum {
-	AT_RESULT_BUSY		= -4,
-	AT_RESULT_ERROR		= -3,
-	AT_RESULT_FAULT		= -2,
-	AT_RESULT_TIMEOUT	= -1,
-	AT_RESULT_NULL		= 0,
-	AT_RESULT_INIT		= 1,
-	AT_RESULT_RUN		= 2,
-	AT_RESULT_OK		= 3,
-	AT_RESULT_DONE		= 4,
+	AT_RESULT_BUSY     = -4,
+	AT_RESULT_ERROR    = -3,
+	AT_RESULT_FAULT    = -2,
+	AT_RESULT_TIMEOUT  = -1,
+	AT_RESULT_NULL     = 0,
+	AT_RESULT_INIT     = 1,
+	AT_RESULT_RUN      = 2,
+	AT_RESULT_OK       = 3,
+	AT_RESULT_DONE     = 4,
 } oATResult_t;
 
 typedef void (*oATTransmitCallback_t)(char *Message);
@@ -58,6 +61,7 @@ typedef struct ATCommendTypeDef{
 
 	uint32_t 			TxTimestamp;
 	uint32_t 			RxTimestamp;
+	uint32_t 			DMAResetTimer;
 	uint8_t 			CountOfTry;
 	uint8_t 			CountOfTimeout;
 	uint8_t 			ProcessStep;
@@ -91,3 +95,29 @@ extern void oAT_Proc(oATCommend_t *pAT);
 #endif
 #endif
 
+/* History
+
+2026-06-26 | v0.1
+	- baseline (ONE_ATCommend.h)
+2026-06-30 | v0.2
+	- STM32U5 (GPDMA) 호환 — CNDTR / DMA_CIRCULAR 직접 참조 제거
+	  · AT_DMA_INDEX 매크로: CNDTR → ONE_DMA_GET_COUNTER()
+	  · ONE_Common.h include 추가 (ONE_DMA_* 매크로 의존)
+2026-07-28 | v0.3
+	- oAT_ReadLine 재작성: calloc/strtok → 정적 라인 버퍼 + 링버퍼 직접 스캔 (힙 제거)
+	  · 선두 delimiter만 남은 경우 소비 — 구버전의 영구 미소비 잠복 버그 수정
+	  · IsRxBusy 게이트 추가 (DMA 수신 중 파싱 차단)
+	- AT_LINE_BUFFER_SIZE 800 — RX 링버퍼와 동일, LoRa 다운링크 hex(최대 484자) 라인 수용
+	- 라인 오버플로 시 DropToDelimiter 모드 — 잔여 조각이 가짜 라인으로 소비되는 것 방지
+	- oAT_Read: pBuffer NULL 초기화
+2026-08-18 | v0.4
+	- oAT_UartRecovery RX 복구 분기를 else if -> 독립 if 로 분리 — HAL_UART_AbortReceive 는 ErrorCode 를
+	  남기므로 else 로 묶이면 Abort 가 만든 READY 를 같은 호출에서 받지 못해 RX 가 영구 사망했다
+	  (비절전 운용 시 POR 외 회복 불가)
+2026-09-14 | v0.5
+	- oAT_UartRecovery 의 DMAResetTimer 를 함수 static 에서 oATCommend_t 멤버로 이관 — 인스턴스가 둘
+	  이상이면 BUSY 쪽이 타이머를 계속 갱신해 READY 쪽이 재시작 주기를 못 채운다
+2026-10-13 | v0.6
+	- oAT_Close 가 RX 상태(IndexOfRxFirst/Last·RxTimestamp·pBufferRx) 초기화 — Close 후 남은
+	  stale DMA 버퍼가 재처리·재-echo 되어 시리얼 폭주하던 것 수정 (oAT_Open 과 대칭, PHM 실기 검증)
+*/

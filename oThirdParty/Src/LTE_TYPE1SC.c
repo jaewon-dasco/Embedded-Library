@@ -1,4 +1,9 @@
-#include "Network.h"
+/*
+ * LTE_TYPE1SC.c
+ *
+ *  Version: 0.1 (2026-06-29)
+ */
+﻿#include "Network.h"
 #include "ONE_Serial.h"
 #include "ONE_ATCommend.h"
 #include "ONE_Memory.h"
@@ -562,7 +567,7 @@ oResult_t LTE_MQTTPublish(int QoS, char *Topic, char *pData, int SizeOfData)
 			oAT_TransmitSerialize(LTEDevice.pAT, (uint8_t *)AT_STRING_CRLF, 2);
 
 			LTEMQTTPublishStep++;
-			oTMR_ResetNow(&LTEMQTTPublishTimer);
+			LTEMQTTPublishTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 		case 1:
 			if(oAT_TransmitBuffer(LTEDevice.pAT) == AT_RESULT_OK){
 				LTEMQTTPublishStep++;
@@ -579,7 +584,7 @@ oResult_t LTE_MQTTPublish(int QoS, char *Topic, char *pData, int SizeOfData)
 					break;
 				case AT_RESULT_OK:
 					result = RESULT_OK;
-					oTMR_ResetNow(&MiMqtt_PublichTimestamp);
+					MiMqtt_PublichTimestamp = oTMR_GetTick(TICKBASE_SYSTICK);
 					LTE_StatusMessage("MQTT publish okay");
 					break;
 				default:
@@ -942,7 +947,7 @@ int LTE_IsConnected()
 	char StrCmd[100] ={0,};
 
 	if(LTEDevice.pAT->State.IsWaitResponse || !LTEDevice.Status.IsConnected){
-		oTMR_ResetNow(&MQTTConnectCheckTimer);
+		MQTTConnectCheckTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 	}
 	else if(oTMR_Trigger(&MQTTConnectCheckTimer, 1500, 1)){
 		switch(MQTTConnectCheckStep)
@@ -1178,7 +1183,7 @@ oResult_t LTE_DeInit()
 	{
 		default:
 			LTE_DeInitStep = 0;
-		case 0://LTE Session close - IP 반납
+		case 0://LTE Session close - IP 諛섎궔
 			switch (oAT_TransmitCommend(LTEDevice.pAT, "AT%PDNACT=0,1", "OK", 5000, 5, True))
 			{
 				case AT_RESULT_TIMEOUT:
@@ -1288,7 +1293,7 @@ oResult_t LTE_Init(oATCommend_t *pATCommend, NetworkProperties_t *pProperties,  
 			LTEDevice.Status.IsResetOn = 0; //reset off
 			LTEDevice.Status.IsWarmUp = 1;
 
-			oTMR_ResetNow(&LTE_InitTimer);
+			LTE_InitTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 
 			LTE_InitTryCount = 0;
 
@@ -1300,7 +1305,7 @@ oResult_t LTE_Init(oATCommend_t *pATCommend, NetworkProperties_t *pProperties,  
 			if(oTMR_Elapsed(&LTE_InitTimer, 2000)){
 				LTEDevice.Status.IsPowerOn = 1;	 //power on
 				LTE_InitStep++;
-				oTMR_ResetNow(&LTE_InitTimer);
+				LTE_InitTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 			}
 			break;
 		case 2:

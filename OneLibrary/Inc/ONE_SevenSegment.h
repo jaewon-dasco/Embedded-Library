@@ -8,16 +8,18 @@
 #ifndef INC_ONE_SEVENSEGMENT_H_
 #define INC_ONE_SEVENSEGMENT_H_
 
+#define ONE_SEVENSEGMENT_VERSION        0.1
+
 #include "ONE_Common.h"
 #include "ONE_Signal.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //7Segment
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define SEVENSEGMENT_CHANNEL_MAXINDEX			4
+#define SEVENSEGMENT_CHANNEL_MAXINDEX   4
 
 #ifdef GPIO_PIN_MASK
-#define SEVENSEGMENT_IO_CTRL(io,state)			((io.Port != NULL) ? HAL_GPIO_WritePin(io.Port,io.Pin, (state? io.ActiveLevel:!io.ActiveLevel)) : (io.Pin = 0))
+#define SEVENSEGMENT_IO_CTRL(io,state)  ((io.Port != NULL) ? HAL_GPIO_WritePin(io.Port,io.Pin, (state? io.ActiveLevel:!io.ActiveLevel)) : (io.Pin = 0))
 #else
 #define SEVENSEGMENT_IO_CTRL(io,state)
 #endif
@@ -48,3 +50,9 @@ typedef struct{
 extern void oSevenSegment(oSevenSegment_t *pSegment, char* pStr, uint16_t Interval, uint8_t Alignement);
 
 #endif
+
+/* History
+
+2026-06-26 | v0.1
+	- baseline (ONE_SevenSegment.h)
+*/

@@ -1,21 +1,115 @@
 /*
  * MEMS_ADXL355BEZRL7.c
  *
- *  Created on: Aug 1, 2025
- *      Author: JONE
+ *  Version: 0.4 (2026-09-01)
  */
 
 
 #include "ONE_Common.h"
+#include "ONE_Serial.h"
 #include "Mi_Main.h"
 #include "MEMS_ADXL355BEZRL7.h"
 
 #define ADXL355_I2C_ADDRESS 			(0x1D << 1)
 
 #define ADXL355_REG_ADDRESS_STATUS 		0x04
+#define ADXL355_REG_ADDRESS_FIFO_ENTRIES 0x05
 #define ADXL355_REG_ADDRESS_DATA 		0x06
+#define ADXL355_REG_ADDRESS_FIFO_DATA	0x11
 #define ADXL355_REG_ADDRESS_PARAMETER 	0x1E
 #define ADXL355_REG_ADDRESS_WO 			0x2F
+
+#define ADXL355_RESET_CODE				0x52   /* RESET reg(0x2F) 기록 코드 — 칩 소프트리셋 */
+#define ADXL355_I2C_RECOVERY_THRESHOLD	5      /* HAL_ERROR 누적 임계 */
+#define ADXL355_I2C_TIMEOUT				100    /* HAL I2C 타임아웃 (ms) — ADXL355_Reset 이 같은 버스에 쓰던 값을 승계.
+                                                  정상 전송(수백 us 예상)의 수백 배 여유라 지터를 오류로 오인하지 않고,
+                                                  회복 지연은 RECOVERY_THRESHOLD(5회)가 지배하므로 더 줄여도 얻는 게 없다.
+                                                  HAL_MAX_DELAY 였을 때는 버스 wedge 시 HAL 이 영원히 반환하지 않아
+                                                  아래 Recovery 에 도달조차 못 했다 (IWDG 리셋이 유일한 회복) */
+
+/* ADXL355_Recovery
+ *  I2C 페리페럴 DeInit/Init으로 BUSY·STUCK 상태 회복.
+ *  STM32L4 STOP1 wake 후 또는 슬레이브가 SDA를 잡고 있는 상태 복구에 사용.
+ */
+oResult_t ADXL355_Recovery(ADXL355_t *pADXL355)
+{
+	if(pADXL355 == NULL || pADXL355->pI2C == NULL){
+		return RESULT_NULL;
+	}
+
+	oSerial_Log("ADXL355", "Recovery I2C DeInit/Init (i2cerr=%d)", (int)pADXL355->State.CountOfI2CError);
+
+	HAL_I2C_DeInit(pADXL355->pI2C);
+	if(HAL_I2C_Init(pADXL355->pI2C) != HAL_OK){
+		oSerial_Log("ADXL355", "Recovery FAIL (I2C Init)");
+		return RESULT_ERROR;
+	}
+
+	pADXL355->State.CountOfI2CError = 0;
+	return RESULT_OK;
+}
+
+/* ADXL355_UpdateElapsed
+ *  I2C 전송 소요시간 최대값 갱신 (µs) — 타임아웃 값의 실측 근거.
+ *  건강한 버스의 정상 전송만 반영하므로 "정상 범위"의 상한이지 이상 상황의 상한은 아니다.
+ */
+static void ADXL355_UpdateElapsed(ADXL355_t *pADXL355, uint32_t BeginUs)
+{
+	uint32_t Elapsed = oTMR_GetTick(TICKBASE_CORECYCLE_US) - BeginUs;	/* unsigned 뺄셈이라 wrap 안전 */
+
+	if(Elapsed > pADXL355->MaxI2CElapsedUs){
+		pADXL355->MaxI2CElapsedUs = Elapsed;
+	}
+}
+
+/* HAL_TIMEOUT 과 HAL_ERROR 는 원인이 다르다 — 타임아웃은 버스가 물려 있다는 뜻이라 Recovery(DeInit/Init)가
+ * 맞고, NACK 는 슬레이브 부재라 DeInit/Init 으로 낫지 않는다. 지금은 같은 임계를 쓰되 구분해 기록만 한다. */
+static void ADXL355_OnHalError(ADXL355_t *pADXL355, HAL_StatusTypeDef Status, uint8_t RegAddress)
+{
+	/* 실패한 레지스터와 HAL 상태를 남긴다 — hal 1=ERROR(NACK) / 2=BUSY / 3=TIMEOUT(버스 물림).
+	   상위(Measurement)에서는 State.CountOfI2CError 가 Close 의 memset 으로 지워진 뒤라 어느
+	   레지스터에서 죽었는지 복원할 수 없다 */
+	oSerial_Log("ADXL355", "I2C fail reg=0x%02X hal=%d i2cerr=%d", (unsigned int)RegAddress, (int)Status, (int)pADXL355->State.CountOfI2CError);
+
+	if(Status == HAL_TIMEOUT && pADXL355->CountOfI2CTimeout < 0xFF){
+		pADXL355->CountOfI2CTimeout++;
+	}
+
+	if(pADXL355->State.CountOfI2CError < 0xFF){
+		pADXL355->State.CountOfI2CError++;
+	}
+	if(pADXL355->State.CountOfI2CError >= ADXL355_I2C_RECOVERY_THRESHOLD){
+		ADXL355_Recovery(pADXL355);
+	}
+}
+
+/* ADXL355_Reset
+ *  칩 소프트리셋 — RESET reg(0x2F)에 0x52 기록 후 내부 안정화 10ms 대기.
+ *  MCU 리셋으로는 센서가 리셋되지 않아(전원 유지) wedged 상태(전축 -FS rail)가 지속될 수 있음.
+ *  ADXL355_Open 시퀀스에서 호출됨 (pI2C 바인딩 이후).
+ */
+oResult_t ADXL355_Reset(ADXL355_t *pADXL355)
+{
+	uint8_t code = ADXL355_RESET_CODE;
+
+	if(pADXL355 == NULL || pADXL355->pI2C == NULL){
+		return RESULT_NULL;
+	}
+
+	HAL_StatusTypeDef Status;
+	uint32_t BeginUs = oTMR_GetTick(TICKBASE_CORECYCLE_US);
+
+	Status = HAL_I2C_Mem_Write(pADXL355->pI2C, ADXL355_I2C_ADDRESS, ADXL355_REG_ADDRESS_WO, I2C_MEMADD_SIZE_8BIT, &code, 1, ADXL355_I2C_TIMEOUT);
+	ADXL355_UpdateElapsed(pADXL355, BeginUs);
+
+	if(Status != HAL_OK){
+		ADXL355_OnHalError(pADXL355, Status, ADXL355_REG_ADDRESS_WO);
+		return RESULT_ERROR;
+	}
+
+	HAL_Delay(10);
+	return RESULT_OK;
+}
 
 oResult_t ADXL355_Write(ADXL355_t *pADXL355, uint8_t RegAddress, uint8_t *pData, uint32_t SizeOfData)
 {
@@ -23,10 +117,18 @@ oResult_t ADXL355_Write(ADXL355_t *pADXL355, uint8_t RegAddress, uint8_t *pData,
 		return RESULT_ERROR;
 	}
 
-	if(HAL_I2C_Mem_Write(pADXL355->pI2C, ADXL355_I2C_ADDRESS, RegAddress, I2C_MEMADD_SIZE_8BIT, pData, SizeOfData, HAL_MAX_DELAY) != HAL_OK){
+	HAL_StatusTypeDef Status;
+	uint32_t BeginUs = oTMR_GetTick(TICKBASE_CORECYCLE_US);
+
+	Status = HAL_I2C_Mem_Write(pADXL355->pI2C, ADXL355_I2C_ADDRESS, RegAddress, I2C_MEMADD_SIZE_8BIT, pData, SizeOfData, ADXL355_I2C_TIMEOUT);
+	ADXL355_UpdateElapsed(pADXL355, BeginUs);
+
+	if(Status != HAL_OK){
+		ADXL355_OnHalError(pADXL355, Status, RegAddress);
 		return RESULT_ERROR;
 	}
 
+	pADXL355->State.CountOfI2CError = 0;
 	return RESULT_OK;
 }
 
@@ -36,10 +138,18 @@ oResult_t ADXL355_Read(ADXL355_t *pADXL355, uint8_t RegAddress, uint8_t *pData, 
 		return RESULT_ERROR;
 	}
 
-	if(HAL_I2C_Mem_Read(pADXL355->pI2C, ADXL355_I2C_ADDRESS, RegAddress, I2C_MEMADD_SIZE_8BIT, pData, SizeOfData, HAL_MAX_DELAY) != HAL_OK){
+	HAL_StatusTypeDef Status;
+	uint32_t BeginUs = oTMR_GetTick(TICKBASE_CORECYCLE_US);
+
+	Status = HAL_I2C_Mem_Read(pADXL355->pI2C, ADXL355_I2C_ADDRESS, RegAddress, I2C_MEMADD_SIZE_8BIT, pData, SizeOfData, ADXL355_I2C_TIMEOUT);
+	ADXL355_UpdateElapsed(pADXL355, BeginUs);
+
+	if(Status != HAL_OK){
+		ADXL355_OnHalError(pADXL355, Status, RegAddress);
 		return RESULT_ERROR;
 	}
 
+	pADXL355->State.CountOfI2CError = 0;
 	return RESULT_OK;
 }
 
@@ -101,6 +211,62 @@ oResult_t ADXL355_GetData(ADXL355_t *pADXL355)
 	return result;
 }
 
+/* ADXL355_GetCountOfFIFOEntries
+ *  FIFO_ENTRIES 레지스터(0x05) 읽기 — 현재 슬롯 수(0~96, 1슬롯=축 1개분)
+ */
+oResult_t ADXL355_GetCountOfFIFOEntries(ADXL355_t *pADXL355, uint8_t *pEntries)
+{
+	if(pADXL355 == NULL || pEntries == NULL){
+		return RESULT_NULL;
+	}
+	return ADXL355_Read(pADXL355, ADXL355_REG_ADDRESS_FIFO_ENTRIES, pEntries, 1);
+}
+
+/* ADXL355_ReadFIFO
+ *  FIFO_DATA 레지스터(0x11)에서 SetCount(=XYZ 세트 수) 만큼 읽기.
+ *  슬롯 = 9 bytes × SetCount. 슬레이브가 FIFO를 자동 pop.
+ */
+oResult_t ADXL355_ReadFIFO(ADXL355_t *pADXL355, uint8_t SetCount, uint8_t *pBuf)
+{
+	if(pADXL355 == NULL || pBuf == NULL || SetCount == 0 || SetCount > 32){
+		return RESULT_NULL;
+	}
+	return ADXL355_Read(pADXL355, ADXL355_REG_ADDRESS_FIFO_DATA, pBuf, (uint32_t)SetCount * 9U);
+}
+
+/* ADXL355_ParseFIFOSet
+ *  9-byte 세트 → X/Y/Z µg 단위 oVector3_t 로 변환.
+ *  현재 GravityRange 설정에 따라 LSB 환산.
+ */
+void ADXL355_ParseFIFOSet(ADXL355_t *pADXL355, const uint8_t *p9, oVector3_t *pOut)
+{
+	if(pADXL355 == NULL || p9 == NULL || pOut == NULL){
+		return;
+	}
+
+	/* FIFO read는 MSB-first: p9[0]=X MSB, p9[1]=X MID, p9[2]=X LSB ... */
+	uint32_t x = ((uint32_t)p9[0] << 16) | ((uint32_t)p9[1] << 8) | (uint32_t)p9[2];
+	uint32_t y = ((uint32_t)p9[3] << 16) | ((uint32_t)p9[4] << 8) | (uint32_t)p9[5];
+	uint32_t z = ((uint32_t)p9[6] << 16) | ((uint32_t)p9[7] << 8) | (uint32_t)p9[8];
+
+	/* 24-bit raw → 20-bit signed (하위 4 bit flag drop, bit 23 = sign) */
+	int32_t xRaw = (int32_t)((x >> 4) | ((x & 0x800000U) ? 0xFFF00000U : 0U));
+	int32_t yRaw = (int32_t)((y >> 4) | ((y & 0x800000U) ? 0xFFF00000U : 0U));
+	int32_t zRaw = (int32_t)((z >> 4) | ((z & 0x800000U) ? 0xFFF00000U : 0U));
+
+	double scale;
+	switch(pADXL355->Register.Parameter.Range.GravityRange){
+		default:
+		case ADXL355_G_RANGE_2G: scale = 3.8147;  break;
+		case ADXL355_G_RANGE_4G: scale = 7.6294;  break;
+		case ADXL355_G_RANGE_8G: scale = 15.2588; break;
+	}
+
+	pOut->X = (double)xRaw * scale;
+	pOut->Y = (double)yRaw * scale;
+	pOut->Z = (double)zRaw * scale;
+}
+
 /* ADXL355_GetAngle
  *
  * Input
@@ -137,7 +303,7 @@ oResult_t ADXL355_GetAngle(ADXL355_t *pADXL355, uint8_t Count, oRPY_t *pAngle)
 			pADXL355->OverSampling.Pitch += RPY.Pitch;
 			pADXL355->OverSampling.Roll += RPY.Roll;
 			pADXL355->State.CountOfOverSampling++;
-		break;
+			break;
 
 	}
 
@@ -276,7 +442,7 @@ oResult_t ADXL355_Open(I2C_HandleTypeDef *pI2C, ADXL355_t *pADXL355)
 			}
 			break;
 		case 2:
-			if(ADXL355_GetParameter(pADXL355) == RESULT_OK){
+			if(ADXL355_Reset(pADXL355) == RESULT_OK){   /* 칩 소프트리셋 — 잔존 wedged 상태 해소 */
 				pADXL355->State.SequenceStep++;
 			}
 			else{
@@ -284,9 +450,17 @@ oResult_t ADXL355_Open(I2C_HandleTypeDef *pI2C, ADXL355_t *pADXL355)
 			}
 			break;
 		case 3:
+			if(ADXL355_GetParameter(pADXL355) == RESULT_OK){
+				pADXL355->State.SequenceStep++;
+			}
+			else{
+				result = RESULT_ERROR;
+			}
+			break;
+		case 4:
 			pADXL355->Register.Parameter.POWER_CTL.Byte = 0; //clear
 			pADXL355->State.SequenceStep++;
-		case 4:
+		case 5:
 			if(ADXL355_SetParameter(pADXL355) == RESULT_OK){
 				pADXL355->State.SequenceStep++;
 			}
@@ -294,13 +468,19 @@ oResult_t ADXL355_Open(I2C_HandleTypeDef *pI2C, ADXL355_t *pADXL355)
 				result = RESULT_ERROR;
 			}
 			break;
-		case 5:
+		case 6:
 			result = RESULT_OK;
 			pADXL355->State.IsRun = 1;
 			break;
 	}
 
 	if(result != RESULT_RUN){
+		/* SequenceStep 은 바로 아래에서 0 으로 되돌아가므로, 어느 하위 단계에서 실패했는지는
+		   여기서만 남길 수 있다 (1=I2C Init / 2=칩 소프트리셋 / 3=파라미터 읽기 / 5=파라미터 쓰기) */
+		if(result == RESULT_ERROR){
+			oSerial_Log("ADXL355", "Open fail ostep=%d i2cerr=%d", (int)pADXL355->State.SequenceStep, (int)pADXL355->State.CountOfI2CError);
+		}
+
 		pADXL355->State.SequenceStep = 0;
 		pADXL355->State.IsBusy = 0;
 	}

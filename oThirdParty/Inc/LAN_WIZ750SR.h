@@ -1,19 +1,21 @@
 #ifndef INC_LAN_WIZ750SR_H_
 #define INC_LAN_WIZ750SR_H_
 
+#define LAN_WIZ750SR_VERSION  0.1
+
 #include "main.h"
 #include "Network.h"
 #include "ATCommend.h"
 
 //Typedef
 typedef enum{
-	LANOpMode_TCPClient = 0,
+	LANOpMode_TCPClient  = 0,
 	LANOpMode_TCPServer,
 	LANOpMode_TCPMix,
 	LANOpMode_UDP,
 }LANOperatingMode_t;
 typedef enum{
-	LANState_UNKNOW = 0,
+	LANState_UNKNOW   = 0,
 	LANState_BOOT,
 	LANState_OPEN,
 	LANState_CONNECT,
@@ -28,3 +30,9 @@ extern uint8_t LAN_IsNewData;
 //Function
 extern uint8_t LAN_Init(ATCommend_t *pATCommend, NetworkProperties_t *pNetProperties, NetworkConnection_t *pNetConnection, LANOperatingMode_t Mode);
 #endif
+
+/* History
+
+2026-06-26 | v0.1
+	- baseline (LAN_WIZ750SR.h)
+*/

@@ -1,8 +1,7 @@
 /*
- * Mi_CAN.c
+ * ONE_CAN.c
  *
- *  Created on: Dec 3, 2024
- *      Author: JONE
+ *  Version: 0.1 (2026-06-29)
  */
 #include "ONE_Memory.h"
 #include "ONE_Time.h"
@@ -406,7 +405,10 @@ oResult_t oCAN_Open(oCANVxD_t **ppVxD, CAN_TypeDef *pCAN, uint16_t Bitrate)
 
 	pInitVxD->Handler.Init.SyncJumpWidth = CAN_SJW_1TQ;
 
-	if(CoreClock >= 16000000){
+	/* The 16TQ table below scales by whole multiples of 16MHz only. A clock
+	 * such as 24 or 40MHz divides to the same multiplier as 16 or 32MHz and
+	 * would silently run at the wrong bitrate, so it goes to the 8TQ table. */
+	if(CoreClock >= 16000000 && (CoreClock % 16000000) == 0){
 		pInitVxD->Handler.Init.TimeSeg1 = CAN_BS1_13TQ;
 		pInitVxD->Handler.Init.TimeSeg2 = CAN_BS2_2TQ;
 
@@ -480,7 +482,12 @@ oResult_t oCAN_Open(oCANVxD_t **ppVxD, CAN_TypeDef *pCAN, uint16_t Bitrate)
 						break;
 				}
 				break;
+			/* The 8MHz timing is reused as is: 8 TQ divides exactly at every
+			 * supported bitrate for 24 and 40MHz as well, keeping the same
+			 * 87.5% sample point as the other two branches. */
 			case 8000000:
+			case 24000000:
+			case 40000000:
 				pInitVxD->Handler.Init.TimeSeg1 = CAN_BS1_6TQ;
 				pInitVxD->Handler.Init.TimeSeg2 = CAN_BS2_1TQ;
 
@@ -509,7 +516,14 @@ oResult_t oCAN_Open(oCANVxD_t **ppVxD, CAN_TypeDef *pCAN, uint16_t Bitrate)
 						pInitVxD->Handler.Init.Prescaler = 40;
 						break;
 				}
+
+				pInitVxD->Handler.Init.Prescaler *= CoreClock/8000000;
 				break;
+
+			default:
+				/* No table for this clock. Refusing beats running on with the
+				 * prescaler left unset, which is what used to happen here. */
+				return RESULT_NULL;
 		}
 	}
 

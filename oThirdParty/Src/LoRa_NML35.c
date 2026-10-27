@@ -1,5 +1,10 @@
 /*
- * UART-3 GPIO PB10/PB11 핀 스웹함. (2024-08-27)
+ * LoRa_NML35.c
+ *
+ *  Version: 0.1 (2026-06-29)
+ */
+﻿/*
+ * UART-3 GPIO PB10/PB11 ? ?ㅼ쎒?? (2024-08-27)
  */
 
 #include "ONE_Serial.h"
@@ -81,7 +86,7 @@ void LoRa_SerialReset()
 		}
 	}
 	else{
-		oTMR_ResetNow(&ResetTimer);
+		ResetTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 	}
 }
 
@@ -89,7 +94,7 @@ static void LoRa_SerialReceiveCallback(oResult_t Result, uint8_t*pData, uint32_t
 {
 	if(Result == RESULT_OK){
 		LoRaDevice.Status.UARTReceiveCount = MATH_MAX(LoRaDevice.Status.UARTReceiveCount+1, 1);
-		oTMR_ResetNow(&LoRaDevice.Status.UARTReceiveTimestamp);
+		LoRaDevice.Status.UARTReceiveTimestamp = oTMR_GetTick(TICKBASE_SYSTICK);
 
 		switch(*pData)
 		{
@@ -103,7 +108,7 @@ static void LoRa_SerialReceiveCallback(oResult_t Result, uint8_t*pData, uint32_t
 					memcpy(&LoRaDevice.Status.Transporter, pData+8, 2);
 					memcpy(&LoRaDevice.Status.Beacon, pData+10, 1);
 
-					oTMR_ResetNow(&LoRaDevice.Status.Heartbeat.Timestamp);
+					LoRaDevice.Status.Heartbeat.Timestamp = oTMR_GetTick(TICKBASE_SYSTICK);
 				}
 				break;
 			case PID_RECEIVED_RADIO_DATA:
@@ -202,7 +207,7 @@ LoRaResult_t LoRa_ParameterWrite(uint8_t Index, uint8_t *pData, uint16_t DLC)
 			memcpy(&LoRaDevice.Buffer.TransmitData[2], pData, DLC);
 
 			if(oSerialTransceiver_SendData(&Transceiver, (uint8_t *)&LoRaDevice.Buffer.TransmitData, DLC+2) == RESULT_OK){
-				oTMR_ResetNow(&LoRaTransmitTimer);
+				LoRaTransmitTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 				LoRaWriteParameterStep++;
 			}
 			else{
@@ -271,7 +276,7 @@ LoRaResult_t LoRa_SentRadioData(uint32_t DestAddress, uint32_t DLC, uint8_t *pDa
 			memcpy(&LoRaDevice.Buffer.TransmitData[5], pData, DLC);
 
 			if(oSerialTransceiver_SendData(&Transceiver, (uint8_t *)&LoRaDevice.Buffer.TransmitData, DLC+5) == RESULT_OK){
-				oTMR_ResetNow(&LoRaTransmitTimer);
+				LoRaTransmitTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 				LoRaRadioSerialTryCount++;
 				LoRaRadioSentStep++;
 			}
@@ -282,7 +287,7 @@ LoRaResult_t LoRa_SentRadioData(uint32_t DestAddress, uint32_t DLC, uint8_t *pDa
 		case 2:
 			if(!Transceiver.Transmitter.IsBusy){
 				if(Transceiver.Transmitter.IsOkay){
-					oTMR_ResetNow(&LoRaTransmitTimer);
+					LoRaTransmitTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 					LoRaRadioSentStep++;
 				}
 			}
@@ -530,7 +535,7 @@ void LoRa_UpdateStatus(void)
 
 	if(LoRaDevice.Status.Heartbeat.SequenceNumber != PastHeartbeatSeqNumber){
 		PastHeartbeatSeqNumber = LoRaDevice.Status.Heartbeat.SequenceNumber;
-		oTMR_ResetNow(&HeartbeatFrozenTimer);
+		HeartbeatFrozenTimer = oTMR_GetTick(TICKBASE_SYSTICK);
 	}
 
 	LoRaDevice.Status.Heartbeat.IsFrozen = oTMR_Elapsed(&HeartbeatFrozenTimer, 5000);

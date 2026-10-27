@@ -133,12 +133,6 @@ CO_ReturnError_t CO_CANmodule_init(CO_CANmodule_t *CANmodule, CO_OD_t	*ODEntryLi
     IDs[3] = CO_CAN_ID_RSDO | *nodeId;
     oCAN_SetIdFilter(CANmodule->pVxd, 0, IDs, 4, 0);
 
-    IDs[0] = CO_CAN_ID_NMT_SERVICE;
-    IDs[1] = CO_CAN_ID_SYNC;
-    IDs[2] = CO_CAN_ID_TIME_STAMP;
-    IDs[3] = CO_CAN_ID_RSDO | *nodeId;
-    oCAN_SetIdFilter(CANmodule->pVxd, 0, IDs, 4, 0);
-
     CANmodule->IsOpen = 1;
 
 	return CO_ERROR_NO;
@@ -261,7 +255,7 @@ static CO_ReturnError_t CO_CANsendToModule(CO_CANmodule_t *CANmodule, CO_CANtx_t
 
     oMsg.ID = (buffer->ident >> 21);
     oMsg.DLC = buffer->DLC;
-    memcpy(&oMsg.Data, &buffer->data, buffer->DLC);
+    memcpy(&oMsg.Data, &buffer->data, 8);
 
     if(oCAN_Transmit(CANmodule->pVxd, &oMsg) == RESULT_OK){
     	CANmodule->IsTransmitted = MATH_MIN(CANmodule->IsTransmitted+1, 254);
@@ -272,7 +266,7 @@ static CO_ReturnError_t CO_CANsendToModule(CO_CANmodule_t *CANmodule, CO_CANtx_t
 	CANmodule->IsBusPassive = 0;
 	CANmodule->CANtxCount++;
 
-    CO_TASK_RESUME;
+    CO_TASK_SUSPEND;
 
     return CO_ERROR_NO;
 }
@@ -321,12 +315,10 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer)
 
     err = CO_CANsendToModule(CANmodule, buffer);
 
-    if(err == CO_ERROR_NO)
-    {
+    if(err == CO_ERROR_NO){
         CANmodule->bufferInhibitFlag = buffer->syncFlag;
     }
-    else if(err == CO_ERROR_TX_OVERFLOW && buffer->bufferFull)
-    {
+    else if(err == CO_ERROR_TX_OVERFLOW && buffer->bufferFull){
         if(!CANmodule->firstCANtxMessage)/* don't set error, if bootup message is still on buffers */
             CO_errorReport((CO_EM_t*)CANmodule->em, CO_EM_CAN_TX_OVERFLOW, CO_EMC_CAN_OVERRUN, 0);
     }

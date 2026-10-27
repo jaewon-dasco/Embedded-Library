@@ -1,6 +1,8 @@
 #ifndef ONE_RINGBUFFER_H
 #define ONE_RINGBUFFER_H
 
+#define ONE_RINGBUFFER_VERSION                  0.1
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -9,9 +11,9 @@ extern "C" {
 #include "ONE_Common.h"
 
 //Ring Buffer
-#define RINGBUFFER_COUNT(older, newer, length)	(newer > older ? (newer-older) : (length-older+newer))
-#define RINGBUFFER_INCREASE(index, length)		(length > 0 ? ((index+1) % length) : 0)
-#define RINGBUFFER_DECREASE(index, length)		(index > 0 ? (index-1) : max(length,1)-1)
+#define RINGBUFFER_COUNT(older, newer, length)  (newer > older ? (newer-older) : (length-older+newer))
+#define RINGBUFFER_INCREASE(index, length)      (length > 0 ? ((index+1) % length) : 0)
+#define RINGBUFFER_DECREASE(index, length)      (index > 0 ? (index-1) : max(length,1)-1)
 
 typedef struct MEM_RingBufferTypDef{
   uint8_t *MemoryPtr;
@@ -34,3 +36,9 @@ extern uint8_t oRingBuffer_Get16(oRingBuffer_t *RingBuffer, uint16_t *pData);
 extern uint8_t oRingBuffer_Get32(oRingBuffer_t *RingBuffer, uint32_t *pData);
 extern uint8_t *oRingBuffer_GetFirstPntr(oRingBuffer_t *RingBuffer);
 #endif
+
+/* History
+
+2026-06-26 | v0.1
+	- baseline (ONE_RingBuffer.h)
+*/

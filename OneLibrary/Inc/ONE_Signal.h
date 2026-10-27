@@ -8,33 +8,35 @@
 #ifndef INC_ONE_SIGNAL_H_
 #define INC_ONE_SIGNAL_H_
 
+#define ONE_SIGNAL_VERSION                                      0.1
+
 #include "ONE_Common.h"
 
-#define IO_LOW					0
-#define IO_HIGH					(!IO_LOW)
+#define IO_LOW                                                  0
+#define IO_HIGH                                                 (!IO_LOW)
 
 #ifdef GPIO_PIN_MASK
-#define IO_WRITE(io, state)		HAL_GPIO_WritePin(io.Port, io.Pin, (state==IO_HIGH) ? io.ActiveLevel : !io.ActiveLevel)
-#define IO_READ(io)				(HAL_GPIO_ReadPin(io.Port, io.Pin) == io.ActiveLevel ? IO_HIGH : IO_LOW)
+#define IO_WRITE(io, state)                                     HAL_GPIO_WritePin(io.Port, io.Pin, (state==IO_HIGH) ? io.ActiveLevel : !io.ActiveLevel)
+#define IO_READ(io)                                             (HAL_GPIO_ReadPin(io.Port, io.Pin) == io.ActiveLevel ? IO_HIGH : IO_LOW)
 #else
 #define IO_WRITE(io, state)
 #define IO_READ(io)
 #endif
 
 
-#define	CALIBRATION_INITIALIZER(iMn,iMx,oMn,oMx,Limit)	{0,0,iMn,iMx,oMn,oMx,Limit}
-#define	DEBOUNCE_INITIALIZER(Rising, Falling)			{0,0,0,Rising,Falling,0}
+#define CALIBRATION_INITIALIZER(iMn,iMx,oMn,oMx,Limit)          {0,0,iMn,iMx,oMn,oMx,Limit}
+#define DEBOUNCE_INITIALIZER(Rising, Falling)                   {0,0,0,Rising,Falling,0}
 
-#define	SIGNAL_PATTERN_INITIALIZER(fq, pt, len)	{fq,pt,len}
-#define SIGNAL_PATTERN_MAXSIZE					32
+#define SIGNAL_PATTERN_INITIALIZER(fq, pt, len)                 {fq,pt,len}
+#define SIGNAL_PATTERN_MAXSIZE                                  32
 
-#define	BLINK_INITIALIZER(fq, pt, len)			{SIGNAL_PATTERN_INITIALIZER(fq,pt ,MATH_MIN(len,BLINK_MAXLENGTH)),1,0,0,0,0,0}
-#define BLINK_MAXLENGTH							60000
+#define BLINK_INITIALIZER(fq, pt, len)                          {SIGNAL_PATTERN_INITIALIZER(fq,pt ,MATH_MIN(len,BLINK_MAXLENGTH)),1,0,0,0,0,0}
+#define BLINK_MAXLENGTH                                         60000
 
-#define THREASHOLD_INITIALIZER(LowLevel, HighLevel, DelayTime)	{LowLevel, HighLevel, 0, DelayTime, 0}
+#define THREASHOLD_INITIALIZER(LowLevel, HighLevel, DelayTime)  {LowLevel, HighLevel, 0, DelayTime, 0}
 
-#define	TRIGGER_INITIALIZER(edge)				{0,edge,0,0,0} //falling edge=0 | rising edge=1
-#define DELAY_INITIALIZER(DelayTime)			{1,0,0,0,DelayTime}
+#define TRIGGER_INITIALIZER(edge)                               {0,edge,0,0,0}  //falling edge=0 | rising edge=1
+#define DELAY_INITIALIZER(DelayTime)                            {1,0,0,0,DelayTime}
 
 #define LINEAR_IS_EMPTY(pLin)	(\
 	pLin == NULL || \
@@ -65,8 +67,8 @@ typedef struct{
 	double HighLevel;
 	double State;
 
-	uint32_t DelayTime; //Delay time in milliseconds
-	uint32_t Timer; //Delay time in milliseconds
+	uint32_t DelayTime;  //Delay time in milliseconds
+	uint32_t Timer;      //Delay time in milliseconds
 }oThreshold_t;
 
 typedef struct{
@@ -81,8 +83,8 @@ typedef struct{
 	uint8_t Output;
 	uint8_t Reset;
 
-	uint16_t RisingDelayTime; //Low to High delay
-	uint16_t FallingDelayTime; //High to Low delay
+	uint16_t RisingDelayTime;   //Low to High delay
+	uint16_t FallingDelayTime;  //High to Low delay
 	uint32_t Timestamp;
 }oDebounce_t;
 
@@ -137,3 +139,9 @@ extern uint8_t oDelay_Falling(oDelay_t *pDelay);
 extern uint8_t oDelay_AutoOff(oDelay_t *pDelay);
 
 #endif /* INC_ONE_SIGNAL_H_ */
+
+/* History
+
+2026-06-26 | v0.1
+	- baseline (ONE_Signal.h)
+*/

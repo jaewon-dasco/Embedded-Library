@@ -1,8 +1,14 @@
 /*
+ * ONE_SevenSegment.c
+ *
+ *  Version: 0.1 (2026-06-29)
+ */
+﻿/*
  * ONE_IoControl.c
  *
  *  Created on: Dec 5, 2024
  *      Author: JONE
+ *  Version: 0.1
  */
 #include "ONE_Time.h"
 #include "ONE_Memory.h"
@@ -106,22 +112,22 @@ void oSevenSegment(oSevenSegment_t *pSegment, char* pStr, uint16_t Interval, uin
 		    SEVENSEGMENT_IO_CTRL(pSegment->SegmentG, oMEM_GetBit(&FndBit, 1));
 		    SEVENSEGMENT_IO_CTRL(pSegment->SegmentDot, hasDot);
 
-		    // 다음 세그먼트로 이동
+		    // ?ㅼ쓬 ?멸렇癒쇳듃濡??대룞
 		    pSegment->SegmentIndex = (pSegment->SegmentIndex + 1) % SEVENSEGMENT_CHANNEL_MAXINDEX;
 
-		    // 유효한 세그먼트가 없으면 초기화
+		    // ?좏슚???멸렇癒쇳듃媛 ?놁쑝硫?珥덇린??
 		    if (pSegment->Channel[pSegment->SegmentIndex].Port == NULL) {
 		        pSegment->SegmentIndex = 0;
 		    }
 
-		    // 문자열 인덱스 갱신
+		    // 臾몄옄???몃뜳??媛깆떊
             if (pSegment->SegmentIndex == 0) {
                 pSegment->StringIndex = 0;
             } else {
                 pSegment->StringIndex++;
             }
 
-            pSegment->UpdateTimer = oTMR_GetTick(TICKBASE_SYSTICK); // oTMR_ResetNow(&pSegment->UpdateTimer); → 대입으로 변경
+            pSegment->UpdateTimer = oTMR_GetTick(TICKBASE_SYSTICK); // oTMR_ResetNow(&pSegment->UpdateTimer); ????낆쑝濡?蹂寃?
             pSegment->SequenceStep++;
             break;
     }
